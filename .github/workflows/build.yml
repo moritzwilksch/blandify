@@ -1,0 +1,163 @@
+name: Build
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Create a release (version from Cargo.toml)"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build Binary (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          # - target: aarch64-unknown-linux-musl
+          #   os: ubuntu-24.04-arm
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          # - target: aarch64-unknown-linux-gnu
+          #   os: ubuntu-24.04-arm
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          # - target: aarch64-pc-windows-msvc
+          #   os: windows-11-arm
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Setup musl
+        if: endsWith(matrix.target, '-musl')
+        run: |
+          sudo apt-get install musl-tools
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          key: build-${{ matrix.target }}-${{ matrix.os }}
+
+      - name: Build
+        run: |
+          cargo build --locked --profile release --color always --target ${{ matrix.target }}
+          mv target/${{ matrix.target }}/release/blandify${{ endsWith(matrix.target, 'windows-msvc') && '.exe' || '' }} blandify-${{ matrix.target }}${{ endsWith(matrix.target, 'windows-msvc') && '.exe' || '' }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: blandify-${{ matrix.target }}
+          path: blandify-${{ matrix.target }}${{ endsWith(matrix.target, 'windows-msvc') && '.exe' || '' }}
+          if-no-files-found: error
+
+  build-python:
+    name: Build Python (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          # - target: aarch64-unknown-linux-musl
+          #   os: ubuntu-24.04-arm
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          # - target: aarch64-unknown-linux-gnu
+          #   os: ubuntu-24.04-arm
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          # - target: aarch64-pc-windows-msvc
+          #   os: windows-11-arm
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pyo3/maturin-action@b1bd829e37fef14c63f19162034228a2f3dc1021 # v1.50.0
+        with:
+          args: --release --locked --out ../dist/
+          target: ${{ matrix.target }}
+          working-directory: python
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: blandify-python-${{ matrix.target }}
+          path: dist/blandify-*.whl
+          if-no-files-found: error
+
+  build-python-sdist:
+    name: Build Python (sdist)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pyo3/maturin-action@b1bd829e37fef14c63f19162034228a2f3dc1021 # v1.50.0
+        with:
+          command: sdist
+          args: --out ../dist/
+          working-directory: python
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: blandify-python-sdist
+          path: dist/blandify-*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: [build, build-python, build-python-sdist]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true'
+    permissions:
+      contents: write
+      id-token: write
+    environment: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Extract version
+        id: version
+        run: |
+          echo "version=$(yq .package.version Cargo.toml)" >> $GITHUB_OUTPUT
+      - name: Download artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: blandify-*
+          merge-multiple: true
+      - name: Push v${{ steps.version.outputs.version }} tag
+        run: |
+          git tag v${{ steps.version.outputs.version }}
+          git push origin v${{ steps.version.outputs.version }}
+      - name: Create Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          generate_release_notes: true
+          tag_name: v${{ steps.version.outputs.version }}
+          draft: true
+          files: blandify-*
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: artifact
+          path: dist
+      - name: Publish package on PyPi
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4

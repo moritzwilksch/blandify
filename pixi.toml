@@ -1,0 +1,30 @@
+[workspace]
+authors = ["Moritz Wilksch <moritzwilksch@gmail.com>"]
+channels = ["conda-forge"]
+name = "blandify"
+platforms = ["osx-arm64", "linux-64", "win-64"]
+
+[tasks]
+
+[dependencies]
+python = ">=3.12"
+
+
+[feature.dev.dependencies]
+rust = ">=1.70"
+maturin = ">=1.0,<2.0"
+pip = "*"
+pytest = ">=7.0"
+lefthook = "*"
+
+[feature.dev.tasks]
+lefthook-run = "pixi run -e dev lefthook run pre-commit --all-files"
+fmt = "cargo fmt --all --check"
+build = { cmd="PIP_REQUIRE_VIRTUALENV=false maturin develop", cwd = "python"}
+test-rust = "cargo test --workspace"
+test-python = { cmd = "pytest tests/", depends-on = ["build"], cwd = "python"}
+test = { depends-on = ["test-rust", "test-python"]}
+
+[environments]
+default = ["dev"]
+dev = ["dev"]

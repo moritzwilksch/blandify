@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "blandify"
+dynamic = ["version"]
+description = "Unicode normalization for stripping LLM artifacts"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [{ name = "Moritz Wilksch", email = "moritzwilksch@gmail.com" }]
+keywords = ["unicode", "normalization", "text-processing", "ascii"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Rust",
+  "Topic :: Text Processing :: General",
+]
+
+[dependency-groups]
+dev = ["pytest>=7.0"]
+
+[tool.maturin]
+manifest-path = "Cargo.toml"
+module-name = "blandify"

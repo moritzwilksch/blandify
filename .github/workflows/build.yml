@@ -60,7 +60,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: blandify-${{ matrix.target }}
+          name: blandify-binary-${{ matrix.target }}
           path: blandify-${{ matrix.target }}${{ endsWith(matrix.target, 'windows-msvc') && '.exe' || '' }}
           if-no-files-found: error
 
@@ -142,7 +142,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          pattern: blandify-*
+          pattern: blandify-binary*
           merge-multiple: true
       - name: Push v${{ steps.version.outputs.version }} tag
         run: |
@@ -155,9 +155,11 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           draft: true
           files: blandify-*
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - name: Download artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: artifact
-          path: dist
+          pattern: blandify-python*
+          path: dist/
+          merge-multiple: true
       - name: Publish package on PyPi
         uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v1.12.4

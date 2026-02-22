@@ -34,18 +34,36 @@ impl Normalizer {
     /// Normalize the input string according to the configured categories.
     pub fn normalize(&self, input: &str) -> String {
         let cats = self.config.categories;
+        let symbols_enabled = cats.contains(Categories::SYMBOLS);
+        let whitespace_enabled = cats.contains(Categories::WHITESPACE);
 
         // Phase 1: character-level replacement
         let mut output = String::with_capacity(input.len());
+        let mut prev_was_unicode_bullet = false;
         for ch in input.chars() {
+            // Bullet lists copied from rich text often use `<bullet><tab>`.
+            // Keep a single separator space after bullet normalization.
+            if prev_was_unicode_bullet && whitespace_enabled && ch == '\t' {
+                output.push(' ');
+                prev_was_unicode_bullet = false;
+                continue;
+            }
+
             match self.replace_char(ch, cats) {
                 Replacement::Empty => {}
                 Replacement::Single(c) => output.push(c),
                 Replacement::Str(s) => output.push_str(s),
             }
+
+            prev_was_unicode_bullet = symbols_enabled && Self::is_unicode_bullet(ch);
         }
 
         output
+    }
+
+    #[inline]
+    fn is_unicode_bullet(ch: char) -> bool {
+        matches!(ch, '\u{2022}' | '\u{25E6}' | '\u{2023}' | '\u{2043}')
     }
 
     #[inline]
@@ -374,6 +392,12 @@ mod tests {
         assert_eq!(n.normalize("\u{00A9}"), "(c)");
         assert_eq!(n.normalize("\u{00AE}"), "(R)");
         assert_eq!(n.normalize("\u{2122}"), "(TM)");
+    }
+
+    #[test]
+    fn bullet_with_tab_separator_normalized_to_single_space() {
+        let n = Normalizer::new();
+        assert_eq!(n.normalize("\u{2022}\tM\u{00F6}we"), "- M\u{00F6}we");
     }
 
     #[test]

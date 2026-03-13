@@ -96,6 +96,14 @@ class TestNormalizeOptions:
     def test_control_chars_toggle(self):
         assert blandify.normalize("a\u0000b\u0001c\u007fd\u0080e", control_chars=True) == "abcde"
 
+    def test_control_chars_reconstructs_corrupted_umlauts(self):
+        assert blandify.normalize("\u0000e4", control_chars=True) == "ä"
+        assert blandify.normalize("\u0000f6", control_chars=True) == "ö"
+
+    def test_control_chars_and_umlauts_transliterates(self):
+        assert blandify.normalize("\u0000e4", control_chars=True, umlauts=True) == "ae"
+        assert blandify.normalize("\u0000f6", control_chars=True, umlauts=True) == "oe"
+
     def test_combined_toggles(self):
         text = "\u201ca\u2014b\u201d"
         assert blandify.normalize(text, quotes=False, dashes=False) == text

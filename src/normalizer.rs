@@ -304,10 +304,28 @@ impl Normalizer {
             'Ü' if cats.contains(Categories::UMLAUTS) => Replacement::Str("Ue"),
             'ß' if cats.contains(Categories::UMLAUTS) => Replacement::Str("ss"),
 
+            // === CONTROL CHARS ===
+            ch if cats.contains(Categories::CONTROL_CHARS) && is_control_char(ch) => {
+                Replacement::Empty
+            }
+
             // === DEFAULT: pass through ===
             _ => Replacement::Single(ch),
         }
     }
+}
+
+/// Returns true for control characters that should never appear in readable text.
+/// Excludes TAB (U+0009), LF (U+000A), and CR (U+000D).
+#[inline]
+fn is_control_char(ch: char) -> bool {
+    matches!(ch,
+        '\u{0000}'..='\u{0008}' |
+        '\u{000B}'..='\u{000C}' |
+        '\u{000E}'..='\u{001F}' |
+        '\u{007F}' |
+        '\u{0080}'..='\u{009F}'
+    )
 }
 
 impl Default for Normalizer {
@@ -429,5 +447,42 @@ mod tests {
         let n = Normalizer::new();
         let ascii = "Hello, world! 123 foo-bar_baz";
         assert_eq!(n.normalize(ascii), ascii);
+    }
+
+    #[test]
+    fn control_chars_off_by_default() {
+        let n = Normalizer::new();
+        assert_eq!(n.normalize("a\u{0000}b"), "a\u{0000}b");
+    }
+
+    #[test]
+    fn control_chars_when_enabled() {
+        let n = Normalizer::with_config(NormalizerConfig::new().control_chars(true));
+        // NULL
+        assert_eq!(n.normalize("a\u{0000}b"), "ab");
+        // C0 control chars
+        assert_eq!(n.normalize("a\u{0001}b"), "ab");
+        assert_eq!(n.normalize("a\u{0008}b"), "ab");
+        assert_eq!(n.normalize("a\u{000B}b"), "ab");
+        assert_eq!(n.normalize("a\u{000C}b"), "ab");
+        assert_eq!(n.normalize("a\u{000E}b"), "ab");
+        assert_eq!(n.normalize("a\u{001F}b"), "ab");
+        // DELETE
+        assert_eq!(n.normalize("a\u{007F}b"), "ab");
+        // C1 control chars
+        assert_eq!(n.normalize("a\u{0080}b"), "ab");
+        assert_eq!(n.normalize("a\u{009F}b"), "ab");
+    }
+
+    #[test]
+    fn control_chars_preserves_tab_lf_cr() {
+        let n = Normalizer::with_config(
+            NormalizerConfig::new()
+                .control_chars(true)
+                .whitespace(false),
+        );
+        assert_eq!(n.normalize("a\tb"), "a\tb");
+        assert_eq!(n.normalize("a\nb"), "a\nb");
+        assert_eq!(n.normalize("a\rb"), "a\rb");
     }
 }

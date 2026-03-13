@@ -78,6 +78,12 @@ impl NormalizerConfig {
         self
     }
 
+    /// Enable or disable control character stripping.
+    pub fn control_chars(mut self, enabled: bool) -> Self {
+        self.categories.set(Categories::CONTROL_CHARS, enabled);
+        self
+    }
+
     /// Build a `Normalizer` from this config.
     pub fn build(self) -> crate::normalizer::Normalizer {
         crate::normalizer::Normalizer::with_config(self)

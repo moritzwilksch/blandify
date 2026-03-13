@@ -219,6 +219,17 @@ fn umlauts_flag_enables_transliteration() {
 }
 
 #[test]
+fn control_chars_flag_enables_stripping() {
+    let mut cmd = blandify_cmd();
+    cmd.arg("--control-chars")
+        .arg("-")
+        .write_stdin("a\u{0000}b\u{0001}c\u{007F}d\u{0080}e")
+        .assert()
+        .success()
+        .stdout("abcde");
+}
+
+#[test]
 fn broken_pipe_on_stdout_is_success() {
     let bin = assert_cmd::cargo::cargo_bin!("blandify");
     let mut child = StdCommand::new(bin)

@@ -556,11 +556,7 @@ mod tests {
     #[test]
     fn control_chars_and_umlauts_transliterates_reconstructed() {
         // With both flags, null-corrupted umlauts get reconstructed then transliterated
-        let n = Normalizer::with_config(
-            NormalizerConfig::new()
-                .control_chars(true)
-                .umlauts(true),
-        );
+        let n = Normalizer::with_config(NormalizerConfig::new().control_chars(true).umlauts(true));
         assert_eq!(n.normalize("\u{0000}e4"), "ae");
         assert_eq!(n.normalize("\u{0000}f6"), "oe");
         assert_eq!(n.normalize("\u{0000}fc"), "ue");

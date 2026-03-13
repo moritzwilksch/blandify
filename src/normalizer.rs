@@ -36,16 +36,35 @@ impl Normalizer {
         let cats = self.config.categories;
         let symbols_enabled = cats.contains(Categories::SYMBOLS);
         let whitespace_enabled = cats.contains(Categories::WHITESPACE);
+        let control_chars_enabled = cats.contains(Categories::CONTROL_CHARS);
 
         // Phase 1: character-level replacement
         let mut output = String::with_capacity(input.len());
         let mut prev_was_unicode_bullet = false;
-        for ch in input.chars() {
+        let mut chars = input.chars().peekable();
+        while let Some(ch) = chars.next() {
             // Bullet lists copied from rich text often use `<bullet><tab>`.
             // Keep a single separator space after bullet normalization.
             if prev_was_unicode_bullet && whitespace_enabled && ch == '\t' {
                 output.push(' ');
                 prev_was_unicode_bullet = false;
+                continue;
+            }
+
+            // LLMs sometimes corrupt Unicode by emitting \u{0000}XX instead of
+            // \u{00XX}. When CONTROL_CHARS is enabled, try to reconstruct the
+            // intended character from a null byte followed by two hex digits.
+            if control_chars_enabled && ch == '\0' {
+                if let Some(reconstructed) = self.try_reconstruct_from_null(&mut chars, cats) {
+                    match reconstructed {
+                        Replacement::Empty => {}
+                        Replacement::Single(c) => output.push(c),
+                        Replacement::Str(s) => output.push_str(s),
+                    }
+                    prev_was_unicode_bullet = false;
+                    continue;
+                }
+                // Plain null byte with no valid reconstruction — strip it.
                 continue;
             }
 
@@ -59,6 +78,42 @@ impl Normalizer {
         }
 
         output
+    }
+
+    /// Try to reconstruct a character from a null byte followed by two hex
+    /// digits. Returns `None` if the next two characters are not valid hex
+    /// digits or the resulting codepoint is below U+00A0 (i.e. ASCII or
+    /// control characters, which are too likely to be coincidental text).
+    fn try_reconstruct_from_null(
+        &self,
+        chars: &mut std::iter::Peekable<std::str::Chars<'_>>,
+        cats: Categories,
+    ) -> Option<Replacement> {
+        // Peek at the next two characters without consuming them yet.
+        let mut peek = chars.clone();
+        let hi = peek.next()?;
+        let lo = peek.next()?;
+
+        let hi_digit = hi.to_digit(16)?;
+        let lo_digit = lo.to_digit(16)?;
+        let code = (hi_digit << 4) | lo_digit;
+
+        // Only reconstruct printable characters (U+00A0 and above in Latin-1
+        // Supplement). Do not reconstruct into C0/C1 controls or ASCII, as
+        // those hex pairs are far more likely to be coincidental text.
+        if code < 0xA0 {
+            return None;
+        }
+
+        let reconstructed = char::from_u32(code)?;
+
+        // Consume the two hex characters we peeked at.
+        chars.next();
+        chars.next();
+
+        // Run the reconstructed character through normal replacement so that
+        // other categories (e.g. UMLAUTS) can further process it.
+        Some(self.replace_char(reconstructed, cats))
     }
 
     #[inline]
@@ -304,10 +359,28 @@ impl Normalizer {
             'Ü' if cats.contains(Categories::UMLAUTS) => Replacement::Str("Ue"),
             'ß' if cats.contains(Categories::UMLAUTS) => Replacement::Str("ss"),
 
+            // === CONTROL CHARS ===
+            ch if cats.contains(Categories::CONTROL_CHARS) && is_control_char(ch) => {
+                Replacement::Empty
+            }
+
             // === DEFAULT: pass through ===
             _ => Replacement::Single(ch),
         }
     }
+}
+
+/// Returns true for control characters that should never appear in readable text.
+/// Excludes TAB (U+0009), LF (U+000A), and CR (U+000D).
+#[inline]
+fn is_control_char(ch: char) -> bool {
+    matches!(ch,
+        '\u{0000}'..='\u{0008}' |
+        '\u{000B}'..='\u{000C}' |
+        '\u{000E}'..='\u{001F}' |
+        '\u{007F}' |
+        '\u{0080}'..='\u{009F}'
+    )
 }
 
 impl Default for Normalizer {
@@ -429,5 +502,91 @@ mod tests {
         let n = Normalizer::new();
         let ascii = "Hello, world! 123 foo-bar_baz";
         assert_eq!(n.normalize(ascii), ascii);
+    }
+
+    #[test]
+    fn control_chars_off_by_default() {
+        let n = Normalizer::new();
+        assert_eq!(n.normalize("a\u{0000}b"), "a\u{0000}b");
+    }
+
+    #[test]
+    fn control_chars_when_enabled() {
+        let n = Normalizer::with_config(NormalizerConfig::new().control_chars(true));
+        // NULL
+        assert_eq!(n.normalize("a\u{0000}b"), "ab");
+        // C0 control chars
+        assert_eq!(n.normalize("a\u{0001}b"), "ab");
+        assert_eq!(n.normalize("a\u{0008}b"), "ab");
+        assert_eq!(n.normalize("a\u{000B}b"), "ab");
+        assert_eq!(n.normalize("a\u{000C}b"), "ab");
+        assert_eq!(n.normalize("a\u{000E}b"), "ab");
+        assert_eq!(n.normalize("a\u{001F}b"), "ab");
+        // DELETE
+        assert_eq!(n.normalize("a\u{007F}b"), "ab");
+        // C1 control chars
+        assert_eq!(n.normalize("a\u{0080}b"), "ab");
+        assert_eq!(n.normalize("a\u{009F}b"), "ab");
+    }
+
+    #[test]
+    fn control_chars_preserves_tab_lf_cr() {
+        let n = Normalizer::with_config(
+            NormalizerConfig::new()
+                .control_chars(true)
+                .whitespace(false),
+        );
+        assert_eq!(n.normalize("a\tb"), "a\tb");
+        assert_eq!(n.normalize("a\nb"), "a\nb");
+        assert_eq!(n.normalize("a\rb"), "a\rb");
+    }
+
+    #[test]
+    fn control_chars_reconstructs_umlaut_from_null_corruption() {
+        // LLM emits \u{0000}e4 instead of \u{00e4} (ä)
+        let n = Normalizer::with_config(NormalizerConfig::new().control_chars(true));
+        assert_eq!(n.normalize("\u{0000}e4"), "ä");
+        assert_eq!(n.normalize("\u{0000}f6"), "ö");
+        assert_eq!(n.normalize("\u{0000}fc"), "ü");
+        assert_eq!(n.normalize("\u{0000}df"), "ß");
+        assert_eq!(n.normalize("\u{0000}c4"), "Ä");
+        assert_eq!(n.normalize("\u{0000}d6"), "Ö");
+        assert_eq!(n.normalize("\u{0000}dc"), "Ü");
+    }
+
+    #[test]
+    fn control_chars_and_umlauts_transliterates_reconstructed() {
+        // With both flags, null-corrupted umlauts get reconstructed then transliterated
+        let n = Normalizer::with_config(NormalizerConfig::new().control_chars(true).umlauts(true));
+        assert_eq!(n.normalize("\u{0000}e4"), "ae");
+        assert_eq!(n.normalize("\u{0000}f6"), "oe");
+        assert_eq!(n.normalize("\u{0000}fc"), "ue");
+        assert_eq!(n.normalize("\u{0000}df"), "ss");
+        assert_eq!(n.normalize("\u{0000}c4"), "Ae");
+        assert_eq!(n.normalize("\u{0000}d6"), "Oe");
+        assert_eq!(n.normalize("\u{0000}dc"), "Ue");
+    }
+
+    #[test]
+    fn control_chars_does_not_reconstruct_ascii_hex() {
+        // \0 followed by hex that would give an ASCII char (e.g. "41" = 'A')
+        // should NOT reconstruct — just strip the null and leave "41" as-is.
+        let n = Normalizer::with_config(NormalizerConfig::new().control_chars(true));
+        assert_eq!(n.normalize("\u{0000}41"), "41");
+        assert_eq!(n.normalize("\u{0000}0a"), "0a");
+    }
+
+    #[test]
+    fn control_chars_does_not_reconstruct_non_hex() {
+        let n = Normalizer::with_config(NormalizerConfig::new().control_chars(true));
+        assert_eq!(n.normalize("\u{0000}zz"), "zz");
+        assert_eq!(n.normalize("\u{0000}g1"), "g1");
+    }
+
+    #[test]
+    fn control_chars_null_at_end_of_string() {
+        let n = Normalizer::with_config(NormalizerConfig::new().control_chars(true));
+        assert_eq!(n.normalize("abc\u{0000}"), "abc");
+        assert_eq!(n.normalize("abc\u{0000}a"), "abca");
     }
 }

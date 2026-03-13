@@ -13,6 +13,7 @@ use pyo3::prelude::*;
 ///     math: Normalize common math symbols.
 ///     symbols: Normalize general symbols like ellipsis and bullets.
 ///     umlauts: Transliterate German umlauts (lossy).
+///     control_chars: Strip control characters (null bytes, C0/C1 controls).
 #[pyfunction]
 #[pyo3(signature = (
     input,
@@ -26,6 +27,7 @@ use pyo3::prelude::*;
     math=true,
     symbols=true,
     umlauts=false,
+    control_chars=false,
 ))]
 fn normalize(
     input: &str,
@@ -38,6 +40,7 @@ fn normalize(
     math: bool,
     symbols: bool,
     umlauts: bool,
+    control_chars: bool,
 ) -> String {
     let is_default = quotes
         && dashes
@@ -47,7 +50,8 @@ fn normalize(
         && fractions
         && math
         && symbols
-        && !umlauts;
+        && !umlauts
+        && !control_chars;
 
     if is_default {
         return blandify_core::normalize(input);
@@ -62,7 +66,8 @@ fn normalize(
         .fractions(fractions)
         .math(math)
         .symbols(symbols)
-        .umlauts(umlauts);
+        .umlauts(umlauts)
+        .control_chars(control_chars);
 
     config.build().normalize(input)
 }

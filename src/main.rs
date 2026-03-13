@@ -58,6 +58,10 @@ struct Cli {
     /// Enable German umlaut expansion (ä→ae, ö→oe, ü→ue, ß→ss)
     #[arg(long)]
     umlauts: bool,
+
+    /// Strip control characters (null bytes, C0/C1 controls) that LLMs sometimes generate
+    #[arg(long)]
+    control_chars: bool,
 }
 
 fn main() -> io::Result<()> {
@@ -111,6 +115,9 @@ fn main() -> io::Result<()> {
     }
     if cli.umlauts {
         cats.insert(Categories::UMLAUTS);
+    }
+    if cli.control_chars {
+        cats.insert(Categories::CONTROL_CHARS);
     }
 
     let config = NormalizerConfig::from_categories(cats);

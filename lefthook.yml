@@ -4,4 +4,5 @@ pre-commit:
       run: pixi install -e dev
     - name: rustfmt
       glob: "**/*.rs"
-      run: pixi run -e dev fmt
+      run: pixi run -e dev fmt-fix
+      stage_fixed: true

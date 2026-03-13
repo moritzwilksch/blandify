@@ -20,6 +20,7 @@ lefthook = "*"
 [feature.dev.tasks]
 lefthook-run = "pixi run -e dev lefthook run pre-commit --all-files"
 fmt = "cargo fmt --all --check"
+fmt-fix = "cargo fmt --all"
 build = { cmd="PIP_REQUIRE_VIRTUALENV=false maturin develop", cwd = "python"}
 test-rust = "cargo test --workspace"
 test-python = { cmd = "pytest tests/", depends-on = ["build"], cwd = "python"}

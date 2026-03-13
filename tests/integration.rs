@@ -370,6 +370,41 @@ fn zero_width_chars_in_middle_of_words() {
     );
 }
 
+// ─── Category: CONTROL_CHARS ─────────────────────────────────────────
+
+#[test]
+fn control_chars_off_by_default() {
+    assert_eq!(normalize("a\u{0000}b"), "a\u{0000}b");
+}
+
+#[test]
+fn control_chars_enabled() {
+    let n = NormalizerConfig::new().control_chars(true).build();
+    // NULL, C0, DELETE, C1
+    assert_eq!(n.normalize("a\u{0000}b"), "ab");
+    assert_eq!(n.normalize("a\u{0001}b"), "ab");
+    assert_eq!(n.normalize("a\u{001F}b"), "ab");
+    assert_eq!(n.normalize("a\u{007F}b"), "ab");
+    assert_eq!(n.normalize("a\u{0080}b"), "ab");
+    assert_eq!(n.normalize("a\u{009F}b"), "ab");
+}
+
+#[test]
+fn control_chars_reconstructs_corrupted_umlauts() {
+    let n = NormalizerConfig::new().control_chars(true).build();
+    // \u{0000}e4 should reconstruct to ä (U+00E4)
+    assert_eq!(n.normalize("Gr\u{0000}fc\u{0000}e4e"), "Grüäe");
+}
+
+#[test]
+fn control_chars_with_umlauts_transliterates() {
+    let n = NormalizerConfig::new()
+        .control_chars(true)
+        .umlauts(true)
+        .build();
+    assert_eq!(n.normalize("Gr\u{0000}fc\u{0000}e4e"), "Grueaee");
+}
+
 #[test]
 fn mixed_categories() {
     let result = normalize("\u{2022} Price: 3\u{00D7}4 = 12\u{00A0}\u{00A9} \u{2192} done\u{2026}");

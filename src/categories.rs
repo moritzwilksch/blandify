@@ -22,8 +22,10 @@ bitflags! {
         const SYMBOLS     = 0x0080;
         /// `ä` → `ae`, `ö` → `oe`, `ü` → `ue`, `ß` → `ss` (lossy, language-specific)
         const UMLAUTS     = 0x0100;
+        /// Strip null bytes, C0/C1 control characters (except TAB/LF/CR), and DELETE
+        const CONTROL_CHARS = 0x0200;
 
-        /// All categories except UMLAUTS (default configuration)
+        /// All categories except UMLAUTS and CONTROL_CHARS (default configuration)
         const DEFAULT = Self::QUOTES.bits()
             | Self::DASHES.bits()
             | Self::WHITESPACE.bits()
@@ -33,7 +35,7 @@ bitflags! {
             | Self::MATH.bits()
             | Self::SYMBOLS.bits();
 
-        /// All categories including UMLAUTS
-        const ALL = Self::DEFAULT.bits() | Self::UMLAUTS.bits();
+        /// All categories
+        const ALL = Self::DEFAULT.bits() | Self::UMLAUTS.bits() | Self::CONTROL_CHARS.bits();
     }
 }

@@ -82,7 +82,8 @@ impl Normalizer {
 
     /// Try to reconstruct a character from a null byte followed by two hex
     /// digits. Returns `None` if the next two characters are not valid hex
-    /// digits or the resulting codepoint is itself a control character.
+    /// digits or the resulting codepoint is below U+00A0 (i.e. ASCII or
+    /// control characters, which are too likely to be coincidental text).
     fn try_reconstruct_from_null(
         &self,
         chars: &mut std::iter::Peekable<std::str::Chars<'_>>,

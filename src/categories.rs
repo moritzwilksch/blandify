@@ -22,7 +22,7 @@ bitflags! {
         const SYMBOLS     = 0x0080;
         /// `ä` → `ae`, `ö` → `oe`, `ü` → `ue`, `ß` → `ss` (lossy, language-specific)
         const UMLAUTS     = 0x0100;
-        /// Strip null bytes, C0/C1 control characters, and DELETE
+        /// Strip null bytes, C0/C1 control characters (except TAB/LF/CR), and DELETE
         const CONTROL_CHARS = 0x0200;
 
         /// All categories except UMLAUTS and CONTROL_CHARS (default configuration)
